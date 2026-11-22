@@ -37,3 +37,4 @@
 - [ ] Complete progress bundle, mobile recovery-key formatting, and Settings controls.
 - [ ] Validate signed saves before replacement; test serialization, overwrite and failure safety.
 - [ ] Run game tests and verify real cloud upload/restore on phone and desktop layouts.
+- [ ] iOS IPA build: needs iOS Unity Game ID + Apple signing secrets

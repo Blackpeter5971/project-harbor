@@ -55,7 +55,7 @@ export function AdBanner() {
     return () => { alive = false; if (timer) clearTimeout(timer); void hideBannerAd(); window.removeEventListener('online', onOnline); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
   if (native) return <div className="ad-banner-space" aria-hidden />;
-  return <div className="ad-banner" role="complementary" aria-label="Advertisement">{error ? `Ad · ${error}` : isNativeAds() ? 'Ad · loading…' : 'Ad · Unity banner shows here in the Android app'}</div>;
+  return <div className="ad-banner" role="complementary" aria-label="Advertisement">{error ? `Ad · ${error}` : isNativeAds() ? 'Ad · loading…' : 'Ad · Unity banner shows here in the mobile app'}</div>;
 }
 
 /** Simulated rewarded ad for the web preview. Mount once. */

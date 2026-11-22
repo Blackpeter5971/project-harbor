@@ -1,0 +1,109 @@
+name: Build iOS IPA
+
+# Run by hand from GitHub "Actions" -> "Build iOS IPA" -> "Run workflow".
+# Signed build needs these repository secrets:
+#   IOS_CERT_P12_BASE64, IOS_CERT_PASSWORD   (Apple Distribution certificate .p12)
+#   IOS_PROFILE_BASE64                       (App Store / Ad Hoc provisioning profile)
+#   IOS_TEAM_ID                              (10-character Apple Team ID)
+#   IOS_EXPORT_METHOD (optional: app-store | ad-hoc, default app-store)
+# Without them an unsigned IPA is produced (can't be installed without re-signing).
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install packages
+        run: bun install
+
+      - name: Build the offline game
+        run: bun run build:mobile
+
+      - name: Create the iOS project
+        run: |
+          rm -rf ios
+          npx cap add ios --packagemanager CocoaPods
+
+      - name: Add Unity Ads
+        run: |
+          cp native/ios/UnityAdsPlugin.swift native/ios/GameViewController.swift ios/App/App/
+          grep -q UnityAds ios/App/Podfile || sed -i '' "/capacitor_pods/a\\
+            pod 'UnityAds', '~> 4.12'
+          " ios/App/Podfile
+          sed -i '' 's/customClass="CAPBridgeViewController" customModule="Capacitor"/customClass="GameViewController" customModule="App" customModuleProvider="target"/' ios/App/App/Base.lproj/Main.storyboard
+          gem install xcodeproj --no-document || true
+          ruby native/ios/add_native_files.rb
+          /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string none" ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string 'Used to show more relevant ads that support the game.'" ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.${{ github.run_number }}" ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" ios/App/App/Info.plist || true
+          npx cap sync ios
+
+      - name: Add the game icon
+        run: npx --yes @capacitor/assets generate --ios --iconBackgroundColor '#0b1a3a'
+
+      - name: Install signing certificate
+        id: sign
+        env:
+          P12: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          P12_PASS: ${{ secrets.IOS_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$P12" ] || [ -z "$PROFILE" ]; then echo "signed=false" >> $GITHUB_OUTPUT; exit 0; fi
+          KC=$RUNNER_TEMP/build.keychain; KP=$(uuidgen)
+          echo "$P12" | base64 -d > $RUNNER_TEMP/cert.p12
+          echo "$PROFILE" | base64 -d > $RUNNER_TEMP/app.mobileprovision
+          security create-keychain -p "$KP" $KC
+          security set-keychain-settings -lut 21600 $KC
+          security unlock-keychain -p "$KP" $KC
+          security import $RUNNER_TEMP/cert.p12 -P "$P12_PASS" -A -t cert -f pkcs12 -k $KC
+          security set-key-partition-list -S apple-tool:,apple: -k "$KP" $KC
+          security list-keychain -d user -s $KC
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< "$(security cms -D -i $RUNNER_TEMP/app.mobileprovision)")
+          NAME=$(/usr/libexec/PlistBuddy -c "Print Name" /dev/stdin <<< "$(security cms -D -i $RUNNER_TEMP/app.mobileprovision)")
+          cp $RUNNER_TEMP/app.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+          echo "signed=true" >> $GITHUB_OUTPUT
+          echo "profile=$NAME" >> $GITHUB_OUTPUT
+
+      - name: Build the IPA
+        working-directory: ios/App
+        env:
+          TEAM: ${{ secrets.IOS_TEAM_ID }}
+          METHOD: ${{ secrets.IOS_EXPORT_METHOD }}
+        run: |
+          if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
+            xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $RUNNER_TEMP/App.xcarchive \
+              -destination 'generic/platform=iOS' archive \
+              CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_IDENTITY="Apple Distribution" \
+              PROVISIONING_PROFILE_SPECIFIER="${{ steps.sign.outputs.profile }}" PRODUCT_BUNDLE_IDENTIFIER=com.crosiangames.president
+            cat > $RUNNER_TEMP/export.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>${METHOD:-app-store}</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict><key>com.crosiangames.president</key><string>${{ steps.sign.outputs.profile }}</string></dict>
+          </dict></plist>
+          PLIST
+            xcodebuild -exportArchive -archivePath $RUNNER_TEMP/App.xcarchive -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/out
+            cp $RUNNER_TEMP/out/*.ipa $GITHUB_WORKSPACE/president-rise-to-power.ipa
+          else
+            xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos \
+              -derivedDataPath $RUNNER_TEMP/dd CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+            mkdir -p $RUNNER_TEMP/Payload
+            cp -R $RUNNER_TEMP/dd/Build/Products/Release-iphoneos/App.app $RUNNER_TEMP/Payload/
+            (cd $RUNNER_TEMP && zip -qr $GITHUB_WORKSPACE/president-rise-to-power-unsigned.ipa Payload)
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-ipa
+          path: president-rise-to-power*.ipa
