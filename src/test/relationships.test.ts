@@ -252,3 +252,29 @@ describe('quarterly family processing (5D)', () => {
     expect(collectFamily(r, c.date).career).toBe(r);
   });
 });
+
+import { normalizeSocial as normSocialForPortrait } from '@/lib/game/relationships';
+import { draftSchema as draftSchemaForSex, defaultDraft as defaultDraftForSex } from '@/lib/game/career';
+
+describe('partner portraits and player gender', () => {
+  it('normalizeSocial keeps a custom partner portrait instead of the archetype default', () => {
+    const raw = { contacts: [], maritalStatus: 'married', dependents: [], partner: { id: 'contact-p-maya-chen', archetypeId: 'romantic', name: 'Maya Chen', role: 'Architect', affinity: 90, status: 'close', portrait: '/custom/maya.jpg', weddingDate: '2030-01-01', sharedMonthlyExpenses: 0 } };
+    const once = normSocialForPortrait(raw);
+    expect(once.partner?.portrait).toBe('/custom/maya.jpg');
+    expect(normSocialForPortrait(JSON.parse(JSON.stringify(once))).partner?.portrait).toBe('/custom/maya.jpg');
+  });
+  it('character sex accepts only Male or Female', () => {
+    expect(draftSchemaForSex.safeParse({ ...defaultDraftForSex, name: 'A', sex: 'Custom' }).success).toBe(false);
+    expect(draftSchemaForSex.safeParse({ ...defaultDraftForSex, name: 'A', sex: 'Male' }).success).toBe(true);
+    expect(draftSchemaForSex.safeParse({ ...defaultDraftForSex, name: 'A', sex: 'Female' }).success).toBe(true);
+  });
+});
+
+import { createCareer as createForLegacySex, parseCareer as parseForLegacySex } from '@/lib/game/career';
+describe('legacy Custom saves', () => {
+  it('load as Male instead of being rejected', () => {
+    const c = createForLegacySex({ ...defaultDraftForSex, name: 'Old' }, () => 0);
+    const json = JSON.stringify({ ...c, character: { ...c.character, sex: 'Custom' } });
+    expect(parseForLegacySex(json)?.character.sex).toBe('Male');
+  });
+});

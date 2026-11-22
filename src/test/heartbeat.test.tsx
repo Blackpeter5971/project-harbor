@@ -11,7 +11,9 @@ import { heartbeatSchema } from '@/lib/game/heartbeat-schema';
 import { contactId } from '@/lib/game/social-events';
 import { beginDating, socialOf } from '@/lib/game/relationships';
 
-const make = (over: Partial<Career> = {}): Career => ({ ...createCareer({ ...defaultDraft, name: 'Ada', background: 'Self-Made' }, () => 0), money: 50_000, ...over });
+const rawMake = (over: Partial<Career> = {}): Career => ({ ...createCareer({ ...defaultDraft, name: 'Ada', background: 'Self-Made' }, () => 0), money: 50_000, ...over });
+const withPref = (c: Career, preference: 'straight' | 'homosexual'): Career => ({ ...c, socialMedia: { ...c.socialMedia!, heartbeat: { ...heartbeatOf(c), preference } } });
+const make = (over: Partial<Career> = {}): Career => withPref(rawMake(over), 'straight');
 const ok = (r: { ok: boolean; message: string; career?: Career }) => { if (!r.ok) throw new Error(r.message); return r.career!; };
 const act = (c: Career, request: HeartBeatInput) => heartBeatAction(c, { ...request, revision: heartbeatOf(c).revision });
 const cid = (personId: string) => contactId(heartbeatProfile(personId)!);
@@ -27,10 +29,10 @@ afterEach(cleanup);
 
 describe('HeartBeat matching and save safety', () => {
   it('has six adult profiles with distinct details', () => {
-    const c = make();
-    expect(browseHeartBeat(c)).toHaveLength(6);
-    expect(new Set(browseHeartBeat(c).map(p => p.name)).size).toBe(6);
-    expect(browseHeartBeat(c).every(p => p.age >= 18 && p.interests.length >= 3 && p.traits.length >= 3)).toBe(true);
+    const all = [...browseHeartBeat(make()), ...browseHeartBeat(withPref(rawMake(), 'homosexual'))];
+    expect(all).toHaveLength(6);
+    expect(new Set(all.map(p => p.name)).size).toBe(6);
+    expect(all.every(p => p.age >= 18 && p.interests.length >= 3 && p.traits.length >= 3)).toBe(true);
   });
   it('derives charm from communication and relationships, bounded at 100', () => {
     const c = make();
@@ -58,12 +60,36 @@ describe('HeartBeat matching and save safety', () => {
     expect(heartbeatOf(passed).revision).toBe(1);
   });
   it('old saves without HeartBeat load safely and null-life careers can date', () => {
+    const raw = rawMake();
+    expect(heartbeatOf(parseCareer(JSON.stringify(raw))!)).toEqual(emptyHeartBeat());
+    expect(browseHeartBeat(raw)).toEqual([]);
     const c = make();
-    expect(heartbeatOf(parseCareer(JSON.stringify(c))!)).toEqual(emptyHeartBeat());
     expect(heartbeatSchema.parse({})).toEqual(emptyHeartBeat());
     const matched = firstMatch({ ...c, life: null });
     const dated = ok(act(matched.career, { type: 'ask-date', personId: matched.personId }));
     expect(dated.life).toBeTruthy();
+  });
+});
+
+describe('HeartBeat orientation preference', () => {
+  const female = (over: Partial<Career> = {}): Career => ({ ...createCareer({ ...defaultDraft, name: 'Bea', sex: 'Female', background: 'Self-Made' }, () => 0), money: 50_000, ...over });
+  const genders = (c: Career) => [...new Set(browseHeartBeat(c).map(p => p.gender))];
+  it('shows no profiles until a preference is chosen', () => {
+    expect(browseHeartBeat(rawMake())).toEqual([]);
+  });
+  it('male straight and female homosexual see only women', () => {
+    expect(genders(withPref(rawMake(), 'straight'))).toEqual(['female']);
+    expect(genders(withPref(female(), 'homosexual'))).toEqual(['female']);
+  });
+  it('female straight and male homosexual see only men', () => {
+    expect(genders(withPref(female(), 'straight'))).toEqual(['male']);
+    expect(genders(withPref(rawMake(), 'homosexual'))).toEqual(['male']);
+  });
+  it('set-preference is a revision-guarded action that survives saving', () => {
+    const c = rawMake();
+    const r = ok(heartBeatAction(c, { type: 'set-preference', preference: 'homosexual', revision: heartbeatOf(c).revision }));
+    expect(heartbeatOf(parseCareer(JSON.stringify(r))!).preference).toBe('homosexual');
+    expect(heartBeatAction(r, { type: 'set-preference', preference: 'straight', revision: 0 }).ok).toBe(false);
   });
 });
 

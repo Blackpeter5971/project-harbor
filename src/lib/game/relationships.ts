@@ -41,7 +41,7 @@ export function contactFrom(a: Archetype, overrides: Partial<SocialContact> = {}
 function normContact(raw: any): SocialContact | null {
   const a = raw && typeof raw.id === 'string' ? archetypeById(raw.archetypeId) : undefined;
   if (!a) return null;
-  return { id: raw.id, archetypeId: a.id, name: typeof raw.name === 'string' && raw.name ? raw.name : a.defaultName, role: typeof raw.role === 'string' && raw.role ? raw.role : a.role, affinity: clampAffinity(raw.affinity, a.baseAffinity), status: statuses.includes(raw.status) ? raw.status : 'acquaintance', portrait: a.portrait, ...(typeof raw.lastInteraction === 'string' ? { lastInteraction: raw.lastInteraction } : {}), ...(typeof raw.neglect === 'number' && raw.neglect > 0 ? { neglect: Math.round(raw.neglect) } : {}) };
+  return { id: raw.id, archetypeId: a.id, name: typeof raw.name === 'string' && raw.name ? raw.name : a.defaultName, role: typeof raw.role === 'string' && raw.role ? raw.role : a.role, affinity: clampAffinity(raw.affinity, a.baseAffinity), status: statuses.includes(raw.status) ? raw.status : 'acquaintance', portrait: typeof raw.portrait === 'string' && raw.portrait ? raw.portrait : a.portrait, ...(typeof raw.lastInteraction === 'string' ? { lastInteraction: raw.lastInteraction } : {}), ...(typeof raw.neglect === 'number' && raw.neglect > 0 ? { neglect: Math.round(raw.neglect) } : {}) };
 }
 
 /** Sanitizes saved social state; unknown archetypes and malformed entries are dropped, and a missing partner forces a coherent marital status. */

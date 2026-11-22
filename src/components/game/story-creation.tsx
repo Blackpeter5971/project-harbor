@@ -7,7 +7,6 @@ import { clampPortrait, portraitsForSex, type StorySex } from '@/lib/game/story-
 const IDENTITIES = [
   { id: 'Male' as const, label: 'Man' },
   { id: 'Female' as const, label: 'Woman' },
-  { id: 'Custom' as const, label: 'Custom' },
 ];
 
 /** Single-screen protagonist setup for Story Mode: identity, name and portrait only. */

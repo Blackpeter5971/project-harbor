@@ -16,7 +16,10 @@ export const heartbeatSchema = z.object({
   revision: z.number().int().nonnegative().default(0),
   decisions: z.array(heartbeatDecisionSchema).default([]),
   matches: z.array(heartbeatMatchSchema).default([]),
+  /** Optional for legacy saves; Discover stays empty until chosen. */
+  preference: z.enum(['straight', 'homosexual']).optional(),
 });
+export type HeartBeatPreference = 'straight' | 'homosexual';
 export type HeartBeatState = z.infer<typeof heartbeatSchema>;
 export type HeartBeatMatch = z.infer<typeof heartbeatMatchSchema>;
 export type HeartBeatMessage = z.infer<typeof heartbeatMessageSchema>;

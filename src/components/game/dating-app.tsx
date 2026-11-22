@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowLeft, Heart, MessageCircle, Send, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Send, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import type { Career } from '@/lib/game/career';
 import {
   browseHeartBeat, heartBeatDateBlock, heartbeatCharm, heartbeatMatch, heartbeatOf, heartbeatPlayerTraits, heartbeatProfile,
@@ -37,9 +37,19 @@ export function DatingApp({ career, onRequest }: Props) {
     <header className="heartbeat-head">
       <span className="heartbeat-brand"><Heart fill="currentColor" /> HeartBeat</span>
       <span>{h.matches.length} match{h.matches.length === 1 ? '' : 'es'}</span>
+      {h.preference && <button type="button" className="heartbeat-pref-toggle" disabled={!onRequest} onClick={() => request({ type: 'set-preference', preference: h.preference === 'straight' ? 'homosexual' : 'straight' })} aria-label="Change who you want to meet"><SlidersHorizontal /> {h.preference === 'straight' ? 'Straight' : 'Homosexual'}</button>}
     </header>
 
-    {selected && person ? <section className="heartbeat-chat" aria-label={`Chat with ${person.name}`}>
+    {!h.preference ? <section className="heartbeat-onboard" aria-label="Dating preference">
+      <Heart fill="currentColor" />
+      <h3>Who are you looking to meet?</h3>
+      <div className="heartbeat-onboard-options">
+        <button type="button" disabled={!onRequest} onClick={() => request({ type: 'set-preference', preference: 'straight' })}><b>Straight</b><small>Opposite gender</small></button>
+        <button type="button" disabled={!onRequest} onClick={() => request({ type: 'set-preference', preference: 'homosexual' })}><b>Homosexual</b><small>Same gender</small></button>
+      </div>
+    </section> :
+
+    selected && person ? <section className="heartbeat-chat" aria-label={`Chat with ${person.name}`}>
       <div className="heartbeat-chat-head">
         <button type="button" onClick={() => setChatId(null)} aria-label="Back to matches"><ArrowLeft /></button>
         <img src={datingPortrait(person.id)} alt="" width={816} height={816} />

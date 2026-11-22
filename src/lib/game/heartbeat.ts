@@ -1,7 +1,7 @@
 import { ACTION_COST } from './energy-costs';
 import type { Career } from './career';
 import type { Result } from './support';
-import type { HeartBeatMatch, HeartBeatState } from './heartbeat-schema';
+import type { HeartBeatMatch, HeartBeatPreference, HeartBeatState } from './heartbeat-schema';
 import { socialOf as mediaOf } from './social-media';
 import { PEOPLE, contactId, type SocialPerson } from './social-events';
 import { ensureLife } from './life';
@@ -10,19 +10,23 @@ import {
   introduceRomanticContact, socialOf as circleOf,
 } from './relationships';
 
+export type HeartBeatGender = 'male' | 'female';
 export interface HeartBeatProfile extends SocialPerson {
+  gender: HeartBeatGender;
   interests: string[];
   traits: string[];
   attractedTo: string[];
+  /** Optional custom portrait path kept on the contact/partner record. */
+  portrait?: string;
 }
 
-const DETAILS: Record<string, Pick<HeartBeatProfile, 'interests' | 'traits' | 'attractedTo'>> = {
-  'maya-chen': { interests: ['Architecture', 'Museums', 'City walks'], traits: ['Witty', 'Creative', 'Curious'], attractedTo: ['Creative', 'Ambitious', 'Genuine'] },
-  'marcus-bell': { interests: ['Jazz', 'Cooking', 'Sunday brunch'], traits: ['Steady', 'Caring', 'Warm'], attractedTo: ['Grounded', 'Genuine', 'Family-oriented'] },
-  'isabel-duarte': { interests: ['Modern art', 'Vinyl', 'Late dinners'], traits: ['Bold', 'Creative', 'Sophisticated'], attractedTo: ['Sophisticated', 'Connected', 'Ambitious'] },
-  'theo-nakamura': { interests: ['Technology', 'Hiking', 'Independent films'], traits: ['Earnest', 'Curious', 'Ambitious'], attractedTo: ['Ambitious', 'Resilient', 'Intellectual'] },
-  'nadia-okafor': { interests: ['Human rights', 'Bookshops', 'Travel'], traits: ['Principled', 'Intellectual', 'Direct'], attractedTo: ['Grounded', 'Intellectual', 'Principled'] },
-  'luca-moretti': { interests: ['Restaurants', 'Family meals', 'Football'], traits: ['Warm', 'Generous', 'Outgoing'], attractedTo: ['Family-oriented', 'Outgoing', 'Genuine'] },
+const DETAILS: Record<string, Pick<HeartBeatProfile, 'gender' | 'interests' | 'traits' | 'attractedTo'>> = {
+  'maya-chen': { gender: 'female', interests: ['Architecture', 'Museums', 'City walks'], traits: ['Witty', 'Creative', 'Curious'], attractedTo: ['Creative', 'Ambitious', 'Genuine'] },
+  'marcus-bell': { gender: 'male', interests: ['Jazz', 'Cooking', 'Sunday brunch'], traits: ['Steady', 'Caring', 'Warm'], attractedTo: ['Grounded', 'Genuine', 'Family-oriented'] },
+  'isabel-duarte': { gender: 'female', interests: ['Modern art', 'Vinyl', 'Late dinners'], traits: ['Bold', 'Creative', 'Sophisticated'], attractedTo: ['Sophisticated', 'Connected', 'Ambitious'] },
+  'theo-nakamura': { gender: 'male', interests: ['Technology', 'Hiking', 'Independent films'], traits: ['Earnest', 'Curious', 'Ambitious'], attractedTo: ['Ambitious', 'Resilient', 'Intellectual'] },
+  'nadia-okafor': { gender: 'female', interests: ['Human rights', 'Bookshops', 'Travel'], traits: ['Principled', 'Intellectual', 'Direct'], attractedTo: ['Grounded', 'Intellectual', 'Principled'] },
+  'luca-moretti': { gender: 'male', interests: ['Restaurants', 'Family meals', 'Football'], traits: ['Warm', 'Generous', 'Outgoing'], attractedTo: ['Family-oriented', 'Outgoing', 'Genuine'] },
 };
 
 export const HEARTBEAT_PROFILES: HeartBeatProfile[] = PEOPLE.filter(p => p.archetypeId === 'romantic').map(p => ({ ...p, ...DETAILS[p.id]! }));
@@ -79,14 +83,31 @@ export function browseHeartBeat(c: Career): HeartBeatProfile[] {
   const h = heartbeatOf(c), s = circleOf(c);
   const decided = new Set(h.decisions.map(d => d.personId));
   const known = new Set([...s.contacts.map(x => x.id), s.partner?.id ?? '']);
-  return HEARTBEAT_PROFILES.filter(p => p.age >= 18 && !decided.has(p.id) && !known.has(contactId(p)));
+  const target = heartbeatTargetGender(c);
+  if (!target) return [];
+  return HEARTBEAT_PROFILES.filter(p => p.gender === target && p.age >= 18 && !decided.has(p.id) && !known.has(contactId(p)));
+}
+
+/** Straight targets the opposite gender, homosexual the same; null until a preference is chosen. */
+export function heartbeatTargetGender(c: Career): HeartBeatGender | null {
+  const pref = heartbeatOf(c).preference;
+  if (!pref) return null;
+  const own: HeartBeatGender = c.character.sex === 'Female' ? 'female' : 'male';
+  const opposite: HeartBeatGender = own === 'male' ? 'female' : 'male';
+  return pref === 'straight' ? opposite : own;
+}
+
+/** Records the player's orientation; existing matches and decisions are kept. */
+export function setHeartBeatPreference(c: Career, preference: HeartBeatPreference): Career {
+  return changed(c, { ...heartbeatOf(c), preference });
 }
 
 export type HeartBeatInput =
   | { type: 'decide'; personId: string; choice: 'like' | 'pass' }
   | { type: 'chat'; personId: string; text: string }
   | { type: 'ask-date'; personId: string }
-  | { type: 'begin-dating'; personId: string };
+  | { type: 'begin-dating'; personId: string }
+  | { type: 'set-preference'; preference: HeartBeatPreference };
 export type HeartBeatRequest = HeartBeatInput & { revision: number };
 
 const together = (c: Career) => {
@@ -120,6 +141,10 @@ const replyFor = (p: HeartBeatProfile, count: number) => [
 export function heartBeatAction(c: Career, request: HeartBeatRequest): Result {
   const h = heartbeatOf(c);
   if (request.revision !== h.revision) return { ok: false, message: 'HeartBeat changed in another view. Please try again.' };
+  if (request.type === 'set-preference') {
+    if (request.preference !== 'straight' && request.preference !== 'homosexual') return { ok: false, message: 'Choose who you want to meet.' };
+    return { ok: true, career: setHeartBeatPreference(c, request.preference), message: 'HeartBeat preferences saved.' };
+  }
   const p = heartbeatProfile(request.personId);
   if (!p) return { ok: false, message: 'That profile is no longer available.' };
 
@@ -151,10 +176,10 @@ export function heartBeatAction(c: Career, request: HeartBeatRequest): Result {
   if (request.type === 'ask-date') {
     const block = heartBeatDateBlock(base, p.id);
     if (block) return { ok: false, message: block };
-    const id = contactId(p), s = circleOf(base);
+    const id = contactId(p), s = circleOf(base), portrait = p.portrait;
     let prepared = base;
     if (!s.contacts.some(x => x.id === id) && s.partner?.id !== id) {
-      const introduced = introduceRomanticContact(prepared, { id, name: p.name, role: p.role, affinity: 55 });
+      const introduced = introduceRomanticContact(prepared, { id, name: p.name, role: p.role, affinity: 55, ...(portrait ? { portrait } : {}) });
       if (!introduced.ok) return introduced;
       prepared = introduced.career;
     }

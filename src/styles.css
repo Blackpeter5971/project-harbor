@@ -1987,3 +1987,13 @@ button.game-row:not(:disabled):hover { border-color: var(--primary); }
 .wm-state.is-selected rect { stroke: var(--foreground); stroke-width: 2.5; }
 .wm-legend { display: flex; flex-wrap: wrap; gap: .6rem; font-size: .75rem; }
 .wm-key { display: inline-flex; align-items: center; gap: .3rem; } .wm-key i { width: .7rem; height: .7rem; border-radius: 2px; display: inline-block; border: 1px solid var(--border); }
+
+.heartbeat-pref-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted-foreground); }
+.heartbeat-pref-toggle svg { width: 14px; height: 14px; }
+.heartbeat-onboard { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 20px; text-align: center; }
+.heartbeat-onboard > svg { width: 36px; height: 36px; color: var(--heartbeat); }
+.heartbeat-onboard h3 { color: var(--foreground); font-size: 18px; }
+.heartbeat-onboard-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 360px; }
+.heartbeat-onboard-options button { display: flex; flex-direction: column; gap: 2px; padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--card); color: var(--foreground); }
+.heartbeat-onboard-options button:hover:not(:disabled) { border-color: var(--heartbeat); }
+.heartbeat-onboard-options small { color: var(--muted-foreground); }

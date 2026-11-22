@@ -57,15 +57,17 @@ export const parties = ['Democrat','Republican','Independent'] as const;
 export type Party = typeof parties[number];
 export const education = ['High School Graduate','Political Science','Law','Business','Military','None',"Bachelor's Degree",'Advanced Degree'] as const;
 export const draftSchema = z.object({
-  name: z.string().trim().min(1).max(32), state: z.enum(states), sex: z.enum(['Male','Female','Custom']),
+  name: z.string().trim().min(1).max(32), state: z.enum(states), sex: z.enum(['Male','Female']),
   portrait: z.number().int().min(0).max(5), background: z.enum(['Nobody','Working-Class Family','Wealthy Family','Political Dynasty','Self-Made']),
   party: z.enum(parties), education: z.enum(education),
 });
 export type CharacterDraft = z.infer<typeof draftSchema>;
+/** Saved characters from before gender was limited load as Male instead of failing. */
+const savedCharacterSchema = draftSchema.extend({ sex: z.preprocess(v => v === 'Custom' ? 'Male' : v, z.enum(['Male','Female'])) });
 export const defaultDraft: CharacterDraft = { name: '', state: 'California', sex: 'Male', portrait: 0, background: 'Working-Class Family', party: 'Independent', education: 'High School Graduate' };
 
 export const ACTIONS_PER_MONTH = BASE_TURN_ENERGY;
-const v1Schema = z.object({ version: z.literal(1), character: draftSchema, age: z.number(), date: z.string(), money: z.number(), reputation: z.number(), relationships: z.number(), publicOffice: z.boolean(), eligibleAppointment: z.boolean() });
+const v1Schema = z.object({ version: z.literal(1), character: savedCharacterSchema, age: z.number(), date: z.string(), money: z.number(), reputation: z.number(), relationships: z.number(), publicOffice: z.boolean(), eligibleAppointment: z.boolean() });
 const skillsSchema = z.object({ communication: z.number(), leadership: z.number(), knowledge: z.number() });
 const applicationSchema = z.object({ jobId: z.string(), month: z.string(), status: z.enum(['pending','offered','rejected','declined']), reason: z.string().optional() });
 const entrySchema = z.object({ month: z.string(), label: z.string(), amount: z.number() });
@@ -105,7 +107,7 @@ const resultSchema = z.object({ crisisRecord: z.object({ score: z.number(), negl
 const supportSchema = z.object({ outcome: z.enum(['pass', 'fail', 'amend', 'compromise', 'delay', 'party opposition']), score: z.number(), votes: z.number(), needed: z.number(), seats: z.number(), reasons: z.array(z.string()) });
 const billSchema = z.object({ id: z.string(), tenure: z.string(), title: z.string(), kind: z.enum(['ordinance', 'bill', 'budget', 'services']), policy: z.enum(['services', 'business', 'environment', 'safety']), stage: z.enum(['proposed', 'under consideration', 'passed', 'rejected', 'awaiting approval']), date: z.string(), cost: z.number(), revision: z.number().default(0), boost: z.number().default(0), attempts: z.number().default(0), support: supportSchema.nullable().default(null), chamberVotes: z.array(z.object({ chamber: z.enum(['house', 'senate']), support: supportSchema })).default([]), history: z.array(z.object({ date: z.string(), text: z.string() })).default([]), budget: z.object({ spending: z.record(z.string(), z.number()), stance: z.enum(['cut', 'hold', 'raise']) }).nullable().default(null) });
 const careerBaseSchema = z.object({
-  version: z.literal(2), character: draftSchema, age: z.number().int(), date: z.string().regex(/^\d{4}-\d{2}-01$/),
+  version: z.literal(2), character: savedCharacterSchema, age: z.number().int(), date: z.string().regex(/^\d{4}-\d{2}-01$/),
   money: z.number(), reputation: z.number(), relationships: z.number(), publicOffice: z.boolean(), eligibleAppointment: z.boolean(),
   actions: z.number().int().min(0).max(MAX_ENERGY),
   /** Set once a save uses energy points in `actions`; absent on legacy 0–5 action saves. */
