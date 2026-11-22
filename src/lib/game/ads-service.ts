@@ -2,7 +2,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 /** Unity Ads configuration per platform. Replace the iOS Game ID with the one from the Unity dashboard. */
 const ANDROID_ADS = { gameId: '800425098', bannerPlacement: 'BP_Banner_Android', rewardedPlacement: 'BP_Rewarded_Android' };
-const IOS_ADS = { gameId: '800425099', bannerPlacement: 'Banner_iOS', rewardedPlacement: 'Rewarded_iOS' };
+const IOS_ADS = { gameId: '800448569', bannerPlacement: 'BP_Banner_iOS', rewardedPlacement: 'BP_Rewarded_iOS' };
 export const UNITY_ADS = { ...(Capacitor.getPlatform() === 'ios' ? IOS_ADS : ANDROID_ADS), testMode: false } as const;
 
 /** Native bridge contract; each native app must register a plugin named "UnityAds". */
