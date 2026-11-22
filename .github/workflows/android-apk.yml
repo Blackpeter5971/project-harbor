@@ -1,0 +1,122 @@
+name: Build Android APK
+
+# Runs on every push to main, or by hand from the GitHub "Actions" tab
+# ("Build Android APK" -> "Run workflow").
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the game code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install packages
+        run: bun install
+
+      - name: Build the offline game
+        run: bun run build:mobile
+
+      - name: Create the Android project
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+
+      - name: Add Unity Ads
+        run: |
+          DIR=android/app/src/main/java/com/crosiangames/president
+          mkdir -p "$DIR"
+          cp native/android/UnityAdsPlugin.java native/android/MainActivity.java "$DIR"/
+          printf "\ndependencies {\n    implementation 'com.unity3d.ads:unity-ads:4.21.0'\n}\n" >> android/app/build.gradle
+
+      - name: Add the game icon
+        run: npx --yes @capacitor/assets generate --android --iconBackgroundColor '#0b1a3a' --iconBackgroundColorDark '#0b1a3a'
+
+      - name: Set up the signing key, version and anti-tamper fingerprint
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KS="$RUNNER_TEMP/release.keystore"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | tr -d " \r\n" | base64 -d > "$KS"
+          elif [ -f native/android/release.keystore ]; then
+            cp native/android/release.keystore "$KS"
+            if [ -z "$KS_PASS" ] || [ -z "$KEY_ALIAS" ]; then
+              echo "::error::Set ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD in GitHub secrets"; exit 1
+            fi
+            KEY_PASS="${KEY_PASS:-$KS_PASS}"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set; falling back to native/android/debug.keystore"
+            keytool -genkeypair -v -keystore "$KS" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            KS_PASS=android; KEY_ALIAS=androiddebugkey; KEY_PASS=android
+          fi
+          # Fingerprint of the signing certificate, baked into MainActivity so re-signed APKs exit.
+          SHA=$(keytool -list -v -keystore "$KS" -storepass "$KS_PASS" -alias "$KEY_ALIAS" | grep -m1 "SHA256:" | sed -E 's/.*SHA256: //; s/://g' | tr -d '[:space:]')
+          test -n "$SHA"
+          sed -i "s/__EXPECTED_SIGNATURE__/$SHA/" android/app/src/main/java/com/crosiangames/president/MainActivity.java
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i -E "s/versionName \"[^\"]+\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          cat >> android/app/build.gradle <<GRADLE
+
+          android {
+            signingConfigs {
+              release {
+                storeFile file('$KS')
+                storePassword '$KS_PASS'
+                keyAlias '$KEY_ALIAS'
+                keyPassword '$KEY_PASS'
+              }
+            }
+            buildTypes {
+              release {
+                signingConfig signingConfigs.release
+                debuggable false
+                jniDebuggable false
+                minifyEnabled true
+                shrinkResources true
+                proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+              }
+            }
+          }
+          GRADLE
+          printf "\n-keep class com.getcapacitor.** { *; }\n-keep class com.crosiangames.president.** { *; }\n-keep class com.unity3d.** { *; }\n-dontwarn com.unity3d.**\n" >> android/app/proguard-rules.pro
+
+      - name: Build the release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Confirm the APK is not debuggable
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
+          if $AAPT dump badging "$APK" | grep -q "application-debuggable"; then echo "APK is debuggable"; exit 1; fi
+          cp "$APK" president-rise-to-power.apk
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-apk
+          path: president-rise-to-power.apk

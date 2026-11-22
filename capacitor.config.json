@@ -1,0 +1,8 @@
+{
+  "appId": "com.crosiangames.president",
+  "appName": "President: Rise to Power",
+  "webDir": "dist/client",
+  "android": {
+    "allowMixedContent": false
+  }
+}

@@ -1,0 +1,6 @@
+[{"capability":"code+assets","source":"code archive","outcome":"migrate","status":"verified","next_action":"none"},
+{"capability":"cloud saves schema + save/load functions","source":"drizzle migrations","outcome":"migrate to Lovable Cloud","status":"verified","next_action":"none"},
+{"capability":"cloud save records","source":"previous backend","outcome":"migrate","status":"pending","next_action":"user exports cloud_saves rows as CSV/JSON, or skips"},
+{"capability":"auth/users","source":"none detected (save codes, no accounts)","outcome":"n/a","status":"verified","next_action":"none"},
+{"capability":"AI features (Lovable AI)","source":"src/lib/*.functions.ts","outcome":"preserve","status":"done","next_action":"live AI calls not exercised"},
+{"capability":"native Android build","source":"capacitor","outcome":"preserve","status":"done","next_action":"build locally"}]
