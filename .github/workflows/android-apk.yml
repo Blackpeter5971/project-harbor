@@ -34,6 +34,16 @@ jobs:
       - name: Build the offline game
         run: bun run build:mobile
 
+      - name: Prepare Netlify SPA routing
+        run: echo "/* /index.html 200" > dist/client/_redirects
+
+      - name: Upload Web Build (Netlify)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/client/
+          if-no-files-found: error
+
       - name: Create the Android project
         run: |
           rm -rf android

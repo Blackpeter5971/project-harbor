@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Add Netlify SPA routing and downloadable dist.zip web artifact to the Android workflow.
 - [ ] Preserve partner portraits, restrict gender choices, and add saved dating preferences with verification.
 - [x] Build post-turn moral encounters, character stages, save guards, and automated verification.
 - [x] Redesign Sandbox quarterly report dashboard and verify mobile continuation.
