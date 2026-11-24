@@ -38,11 +38,18 @@ jobs:
         run: echo "/* /index.html 200" > dist/client/_redirects
 
       - name: Upload Web Build (Netlify)
+        id: web-artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/client/
           if-no-files-found: error
+
+      - name: Show web download link
+        env:
+          ARTIFACT_URL: ${{ steps.web-artifact.outputs.artifact-url }}
+        run: |
+          printf '### Web download\n[Download dist.zip](%s)\n\nSign in to GitHub to download this artifact. Extract it before deploying to Netlify.\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create the Android project
         run: |
@@ -152,8 +159,15 @@ jobs:
           cp "$APK" president-rise-to-power.apk
 
       - name: Upload the APK
+        id: apk-artifact
         uses: actions/upload-artifact@v4
         with:
           name: game-apk
           path: president-rise-to-power.apk
           if-no-files-found: error
+
+      - name: Show APK download link
+        env:
+          ARTIFACT_URL: ${{ steps.apk-artifact.outputs.artifact-url }}
+        run: |
+          printf '### Android download\n[Download game-apk.zip](%s)\n\nSign in to GitHub, download and extract the ZIP, then install president-rise-to-power.apk.\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
