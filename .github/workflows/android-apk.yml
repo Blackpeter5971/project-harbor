@@ -91,7 +91,15 @@ jobs:
           [[ "$SHA" =~ ^[A-F0-9]{64}$ ]]
           printf '%s\n' "$SHA" > "$RUNNER_TEMP/expected-signature.txt"
           sed -i "s/__EXPECTED_SIGNATURE__/$SHA/" android/app/src/main/java/com/crosiangames/president/MainActivity.java
-          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          if grep -q '__EXPECTED_SIGNATURE__' android/app/src/main/java/com/crosiangames/president/MainActivity.java; then
+            echo "::error::Signing certificate was not injected into the game."
+            exit 1
+          fi
+          # Time-based code survives workflow/repository run-number resets after migration.
+          VERSION_CODE=$(( $(date -u +%s) - 1577836800 ))
+          test "$VERSION_CODE" -gt 0 && test "$VERSION_CODE" -lt 2100000000
+          printf '%s\n' "$VERSION_CODE" > "$RUNNER_TEMP/expected-version.txt"
+          sed -i -E "s/versionCode [0-9]+/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i -E "s/versionName \"[^\"]+\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
           cat >> android/app/build.gradle <<'GRADLE'
 
@@ -135,6 +143,8 @@ jobs:
           test -s "$APK"
           TOOLS=$(printf '%s\n' "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$TOOLS/aapt" dump badging "$APK" > "$RUNNER_TEMP/apk-badging.txt"
+          APP_ID=$(node -p 'JSON.parse(require("fs").readFileSync("capacitor.config.json", "utf8")).appId')
+          grep -F "package: name='$APP_ID' versionCode='$(cat "$RUNNER_TEMP/expected-version.txt")'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null
           if grep -q "application-debuggable" "$RUNNER_TEMP/apk-badging.txt"; then echo "::error::APK is debuggable"; exit 1; fi
           "$TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-signature.txt"
           ACTUAL=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt" | tr '[:lower:]' '[:upper:]')
