@@ -68,34 +68,40 @@ jobs:
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           KS="$RUNNER_TEMP/release.keystore"
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | tr -d " \r\n" | base64 -d > "$KS"
-          elif [ -f native/android/release.keystore ]; then
-            cp native/android/release.keystore "$KS"
-            if [ -z "$KS_PASS" ] || [ -z "$KEY_ALIAS" ]; then
-              echo "::error::Set ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD in GitHub secrets"; exit 1
+          set -euo pipefail
+          umask 077
+          for NAME in KEYSTORE_B64 KS_PASS KEY_ALIAS; do
+            if [ -z "${!NAME}" ]; then
+              echo "::error::Missing signing credential: $NAME. Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS in GitHub Actions secrets."
+              exit 1
             fi
-            KEY_PASS="${KEY_PASS:-$KS_PASS}"
-          else
-            echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set; falling back to native/android/debug.keystore"
-            keytool -genkeypair -v -keystore "$KS" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            KS_PASS=android; KEY_ALIAS=androiddebugkey; KEY_PASS=android
+          done
+          KEY_PASS="${KEY_PASS:-$KS_PASS}"
+          export KS_PASS KEY_PASS
+          if ! printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 --decode > "$KS"; then
+            echo "::error::Invalid ANDROID_KEYSTORE_BASE64. Use the contents of your original base64 file."
+            exit 1
           fi
           # Fingerprint of the signing certificate, baked into MainActivity so re-signed APKs exit.
-          SHA=$(keytool -list -v -keystore "$KS" -storepass "$KS_PASS" -alias "$KEY_ALIAS" | grep -m1 "SHA256:" | sed -E 's/.*SHA256: //; s/://g' | tr -d '[:space:]')
-          test -n "$SHA"
+          if ! keytool -exportcert -keystore "$KS" -storepass:env KS_PASS -alias "$KEY_ALIAS" -file "$RUNNER_TEMP/signing-cert.der" >/dev/null 2>&1; then
+            echo "::error::Cannot unlock signing certificate. Check ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS."
+            exit 1
+          fi
+          SHA=$(sha256sum "$RUNNER_TEMP/signing-cert.der" | cut -d ' ' -f 1 | tr '[:lower:]' '[:upper:]')
+          [[ "$SHA" =~ ^[A-F0-9]{64}$ ]]
+          printf '%s\n' "$SHA" > "$RUNNER_TEMP/expected-signature.txt"
           sed -i "s/__EXPECTED_SIGNATURE__/$SHA/" android/app/src/main/java/com/crosiangames/president/MainActivity.java
           sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/" android/app/build.gradle
           sed -i -E "s/versionName \"[^\"]+\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
-          cat >> android/app/build.gradle <<GRADLE
+          cat >> android/app/build.gradle <<'GRADLE'
 
           android {
             signingConfigs {
               release {
-                storeFile file('$KS')
-                storePassword '$KS_PASS'
-                keyAlias '$KEY_ALIAS'
-                keyPassword '$KEY_PASS'
+                storeFile file(System.getenv('RUNNER_TEMP') + '/release.keystore')
+                storePassword System.getenv('KS_PASS')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASS') ?: System.getenv('KS_PASS')
               }
             }
             buildTypes {
@@ -114,15 +120,25 @@ jobs:
 
       - name: Build the release APK
         working-directory: android
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
       - name: Confirm the APK is not debuggable
         run: |
+          set -euo pipefail
           APK=android/app/build/outputs/apk/release/app-release.apk
-          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
-          if $AAPT dump badging "$APK" | grep -q "application-debuggable"; then echo "APK is debuggable"; exit 1; fi
+          test -s "$APK"
+          TOOLS=$(printf '%s\n' "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$TOOLS/aapt" dump badging "$APK" > "$RUNNER_TEMP/apk-badging.txt"
+          if grep -q "application-debuggable" "$RUNNER_TEMP/apk-badging.txt"; then echo "::error::APK is debuggable"; exit 1; fi
+          "$TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-signature.txt"
+          ACTUAL=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt" | tr '[:lower:]' '[:upper:]')
+          test "$ACTUAL" = "$(cat "$RUNNER_TEMP/expected-signature.txt")"
           cp "$APK" president-rise-to-power.apk
 
       - name: Upload the APK
@@ -130,3 +146,4 @@ jobs:
         with:
           name: game-apk
           path: president-rise-to-power.apk
+          if-no-files-found: error

@@ -1,4 +1,6 @@
 # Roadmap
+- [x] Harden Android signing and APK verification without replacing the signing identity; four signing tests and YAML validation passed.
+- [ ] Downloadable APK — blocked on GitHub signing secrets and successful Actions run; repository sync exposes no GitHub Actions access here.
 - [x] Add Netlify SPA routing and downloadable dist.zip web artifact to the Android workflow.
 - [ ] Preserve partner portraits, restrict gender choices, and add saved dating preferences with verification.
 - [x] Build post-turn moral encounters, character stages, save guards, and automated verification.
