@@ -157,8 +157,12 @@ jobs:
             exit 1
           fi
           if grep -q "application-debuggable" "$RUNNER_TEMP/apk-badging.txt"; then echo "::error::APK is debuggable"; exit 1; fi
-          if ! "$TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-signature.txt"; then echo "::error::APK signature verification failed."; exit 1; fi
-          ACTUAL=$(sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' "$RUNNER_TEMP/apk-signature.txt" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
+          if ! "$TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-signature.txt" 2>&1; then echo "::error::APK signature verification failed."; cat "$RUNNER_TEMP/apk-signature.txt" || true; exit 1; fi
+          ACTUAL=$(grep -i 'certificate SHA-256 digest' "$RUNNER_TEMP/apk-signature.txt" | head -1 | sed 's/.*[Dd]igest:[[:space:]]*//' | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' || true)
+          if ! [[ "$ACTUAL" =~ ^[A-F0-9]{64}$ ]] && command -v keytool >/dev/null; then
+            ACTUAL=$(keytool -printcert -jarfile "$APK" 2>/dev/null | grep -i 'SHA256:' | head -1 | sed 's/.*SHA256:[[:space:]]*//' | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' || true)
+          fi
+          if ! [[ "$ACTUAL" =~ ^[A-F0-9]{64}$ ]]; then echo "apksigner output:"; cat "$RUNNER_TEMP/apk-signature.txt" || true; fi
           EXPECTED=$(tr -d '[:space:]:' < "$RUNNER_TEMP/expected-signature.txt" | tr '[:lower:]' '[:upper:]')
           printf 'Expected certificate SHA-256: %s\nActual certificate SHA-256: %s\n' "$EXPECTED" "$ACTUAL"
           if ! [[ "$ACTUAL" =~ ^[A-F0-9]{64}$ && "$EXPECTED" =~ ^[A-F0-9]{64}$ ]]; then

@@ -75,7 +75,8 @@ class AndroidSigningTests(unittest.TestCase):
         self.assertIn('versionCode 217667701', later_gradle)
 
     def run_verification(self, package='com.crosiangames.president', version='217667700', fingerprint='A' * 64,
-                         indent='', expected='A' * 64, debuggable=False, signer_valid=True):
+                         indent='', expected='A' * 64, debuggable=False, signer_valid=True,
+                         label='Signer #1', to_stderr=False):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             apk = directory / 'android/app/build/outputs/apk/release/app-release.apk'
@@ -87,9 +88,10 @@ class AndroidSigningTests(unittest.TestCase):
             tools = directory / 'build-tools/36.0.0'
             tools.mkdir(parents=True)
             for name, output in [('aapt', "package: name='" + package + "' versionCode='" + version + "'" + ('\napplication-debuggable' if debuggable else '')),
-                                 ('apksigner', indent + 'Signer #1 certificate SHA-256 digest: ' + fingerprint)]:
+                                 ('apksigner', indent + label + ' certificate SHA-256 digest: ' + fingerprint)]:
                 executable = tools / name
-                executable.write_text('#!/bin/bash\ncat <<\'OUTPUT\'\n' + output + '\nOUTPUT\n' + ('exit 1\n' if name == 'apksigner' and not signer_valid else ''))
+                redirect = ' >&2' if name == 'apksigner' and to_stderr else ''
+                executable.write_text('#!/bin/bash\ncat' + redirect + ' <<\'OUTPUT\'\n' + output + '\nOUTPUT\n' + ('exit 1\n' if name == 'apksigner' and not signer_valid else ''))
                 executable.chmod(0o700)
             result = subprocess.run(['bash', '-c', VERIFY_SCRIPT], cwd=temp,
                                     env={**os.environ, 'RUNNER_TEMP': temp, 'ANDROID_HOME': temp},
@@ -104,6 +106,12 @@ class AndroidSigningTests(unittest.TestCase):
 
     def test_colon_separated_digests_can_be_downloaded(self):
         self.assertEqual(self.run_verification(fingerprint=':'.join(['aa'] * 32), expected=':'.join(['AA'] * 32)), (0, True))
+
+    def test_signer_label_with_sdk_range_can_be_downloaded(self):
+        self.assertEqual(self.run_verification(label='Signer (minSdkVersion=24, maxSdkVersion=2147483647)'), (0, True))
+
+    def test_digest_printed_on_stderr_can_be_downloaded(self):
+        self.assertEqual(self.run_verification(to_stderr=True), (0, True))
 
     def test_empty_or_malformed_fingerprint_is_not_uploaded(self):
         for fingerprint in ['', 'A' * 63, 'G' * 64]:
