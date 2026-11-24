@@ -1,8 +1,9 @@
 # Roadmap
+- [x] Normalize APK certificate output and add explicit verification errors with regression tests; do not upload failed verification.
 - [x] Verify reuploaded signing files match the original key; add APK/web artifact links to the workflow summary.
 - [x] Sweep app identity, version numbering, startup signature guard and download verification; nine tests and workflow validation passed.
 - [x] Harden Android signing and APK verification without replacing the signing identity; four signing tests and YAML validation passed.
-- [ ] Downloadable APK — blocked on GitHub signing secrets and successful Actions run; repository sync exposes no GitHub Actions access here.
+- [ ] Downloadable APK — signing setup succeeded per the user's run; awaiting a successful GitHub Actions rerun after verification repair (no Actions access here).
 - [x] Add Netlify SPA routing and downloadable dist.zip web artifact to the Android workflow.
 - [ ] Preserve partner portraits, restrict gender choices, and add saved dating preferences with verification.
 - [x] Build post-turn moral encounters, character stages, save guards, and automated verification.

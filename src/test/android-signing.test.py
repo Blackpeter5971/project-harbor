@@ -74,21 +74,22 @@ class AndroidSigningTests(unittest.TestCase):
         self.assertIn('versionCode 217667700', first_gradle)
         self.assertIn('versionCode 217667701', later_gradle)
 
-    def run_verification(self, package='com.crosiangames.president', version='217667700', fingerprint='A' * 64):
+    def run_verification(self, package='com.crosiangames.president', version='217667700', fingerprint='A' * 64,
+                         indent='', expected='A' * 64, debuggable=False, signer_valid=True):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             apk = directory / 'android/app/build/outputs/apk/release/app-release.apk'
             apk.parent.mkdir(parents=True)
             apk.write_bytes(b'synthetic apk')
             (directory / 'capacitor.config.json').write_text('{"appId":"com.crosiangames.president"}')
-            (directory / 'expected-signature.txt').write_text('A' * 64 + '\n')
+            (directory / 'expected-signature.txt').write_text(expected + '\n')
             (directory / 'expected-version.txt').write_text('217667700\n')
             tools = directory / 'build-tools/36.0.0'
             tools.mkdir(parents=True)
-            for name, output in [('aapt', "package: name='" + package + "' versionCode='" + version + "'"),
-                                 ('apksigner', 'Signer #1 certificate SHA-256 digest: ' + fingerprint)]:
+            for name, output in [('aapt', "package: name='" + package + "' versionCode='" + version + "'" + ('\napplication-debuggable' if debuggable else '')),
+                                 ('apksigner', indent + 'Signer #1 certificate SHA-256 digest: ' + fingerprint)]:
                 executable = tools / name
-                executable.write_text('#!/bin/bash\ncat <<\'OUTPUT\'\n' + output + '\nOUTPUT\n')
+                executable.write_text('#!/bin/bash\ncat <<\'OUTPUT\'\n' + output + '\nOUTPUT\n' + ('exit 1\n' if name == 'apksigner' and not signer_valid else ''))
                 executable.chmod(0o700)
             result = subprocess.run(['bash', '-c', VERIFY_SCRIPT], cwd=temp,
                                     env={**os.environ, 'RUNNER_TEMP': temp, 'ANDROID_HOME': temp},
@@ -97,6 +98,29 @@ class AndroidSigningTests(unittest.TestCase):
 
     def test_matching_identity_can_be_downloaded(self):
         self.assertEqual(self.run_verification(), (0, True))
+
+    def test_indented_digest_with_crlf_can_be_downloaded(self):
+        self.assertEqual(self.run_verification(indent='  ', fingerprint='a' * 64 + '\r'), (0, True))
+
+    def test_colon_separated_digests_can_be_downloaded(self):
+        self.assertEqual(self.run_verification(fingerprint=':'.join(['aa'] * 32), expected=':'.join(['AA'] * 32)), (0, True))
+
+    def test_empty_or_malformed_fingerprint_is_not_uploaded(self):
+        for fingerprint in ['', 'A' * 63, 'G' * 64]:
+            with self.subTest(fingerprint=fingerprint):
+                code, uploaded = self.run_verification(fingerprint=fingerprint)
+                self.assertNotEqual(code, 0)
+                self.assertFalse(uploaded)
+
+    def test_debuggable_apk_is_not_uploaded(self):
+        code, uploaded = self.run_verification(debuggable=True)
+        self.assertNotEqual(code, 0)
+        self.assertFalse(uploaded)
+
+    def test_invalid_apk_signature_is_not_uploaded(self):
+        code, uploaded = self.run_verification(signer_valid=False)
+        self.assertNotEqual(code, 0)
+        self.assertFalse(uploaded)
 
     def test_wrong_signer_is_not_uploaded(self):
         code, uploaded = self.run_verification(fingerprint='B' * 64)

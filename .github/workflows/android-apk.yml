@@ -147,15 +147,25 @@ jobs:
         run: |
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/app-release.apk
-          test -s "$APK"
+          if [ ! -s "$APK" ]; then echo "::error::Release APK is missing or empty."; exit 1; fi
           TOOLS=$(printf '%s\n' "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$TOOLS/aapt" dump badging "$APK" > "$RUNNER_TEMP/apk-badging.txt"
+          if ! "$TOOLS/aapt" dump badging "$APK" > "$RUNNER_TEMP/apk-badging.txt"; then echo "::error::Cannot read APK metadata."; exit 1; fi
           APP_ID=$(node -p 'JSON.parse(require("fs").readFileSync("capacitor.config.json", "utf8")).appId')
-          grep -F "package: name='$APP_ID' versionCode='$(cat "$RUNNER_TEMP/expected-version.txt")'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null
+          if ! grep -F "package: name='$APP_ID' versionCode='$(cat "$RUNNER_TEMP/expected-version.txt")'" "$RUNNER_TEMP/apk-badging.txt" >/dev/null; then
+            echo "::error::APK package or version does not match the expected release."
+            grep '^package:' "$RUNNER_TEMP/apk-badging.txt" || true
+            exit 1
+          fi
           if grep -q "application-debuggable" "$RUNNER_TEMP/apk-badging.txt"; then echo "::error::APK is debuggable"; exit 1; fi
-          "$TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-signature.txt"
-          ACTUAL=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt" | tr '[:lower:]' '[:upper:]')
-          test "$ACTUAL" = "$(cat "$RUNNER_TEMP/expected-signature.txt")"
+          if ! "$TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-signature.txt"; then echo "::error::APK signature verification failed."; exit 1; fi
+          ACTUAL=$(sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' "$RUNNER_TEMP/apk-signature.txt" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
+          EXPECTED=$(tr -d '[:space:]:' < "$RUNNER_TEMP/expected-signature.txt" | tr '[:lower:]' '[:upper:]')
+          printf 'Expected certificate SHA-256: %s\nActual certificate SHA-256: %s\n' "$EXPECTED" "$ACTUAL"
+          if ! [[ "$ACTUAL" =~ ^[A-F0-9]{64}$ && "$EXPECTED" =~ ^[A-F0-9]{64}$ ]]; then
+            echo "::error::Cannot read a valid signing certificate fingerprint."
+            exit 1
+          fi
+          if [ "$ACTUAL" != "$EXPECTED" ]; then echo "::error::APK was signed with a different certificate. Upload blocked to protect update compatibility."; exit 1; fi
           cp "$APK" president-rise-to-power.apk
 
       - name: Upload the APK
