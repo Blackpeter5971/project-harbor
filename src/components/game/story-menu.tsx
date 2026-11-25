@@ -9,7 +9,7 @@ import { useWallet } from './ads';
 import { StatusBadge } from './mode-select';
 
 /** Story Mode is still in development: list scenarios but block playing and buying until the next update. */
-export const STORY_PLAY_ENABLED = false;
+export const STORY_PLAY_ENABLED = true;
 
 type CardState = 'playable' | 'coming' | 'premium' | 'completed';
 const BADGE: Record<CardState, { label: string; tone: 'active' | 'locked' | 'completed' }> = {
